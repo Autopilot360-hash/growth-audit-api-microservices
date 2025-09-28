@@ -1,0 +1,124 @@
+export class GA4Checker {
+  constructor(credentials) {
+    this.credentials = credentials;
+  }
+
+  async healthCheck(propertyId) {
+    try {
+      // Vérification de la configuration GA4
+      const checks = {
+        property_exists: await this.checkPropertyExists(propertyId),
+        tracking_code: await this.checkTrackingCode(propertyId),
+        events_flowing: await this.checkEventsFlow(propertyId),
+        ecommerce_setup: await this.checkEcommerceSetup(propertyId),
+        conversion_tracking: await this.checkConversions(propertyId)
+      };
+
+      const score = this.calculateScore(checks);
+      
+      return {
+        platform: 'GA4',
+        property_id: propertyId,
+        overall_score: score,
+        checks,
+        recommendations: this.generateRecommendations(checks),
+        last_checked: new Date().toISOString()
+      };
+    } catch (error) {
+      return {
+        platform: 'GA4',
+        error: error.message,
+        status: 'failed'
+      };
+    }
+  }
+
+  async checkPropertyExists(propertyId) {
+    // Simulation pour demo - intégration réelle GA4 API
+    return {
+      status: Math.random() > 0.1,
+      message: 'Property accessible and configured'
+    };
+  }
+
+  async checkTrackingCode(propertyId) {
+    return {
+      status: Math.random() > 0.2,
+      message: 'Tracking code properly installed'
+    };
+  }
+
+  async checkEventsFlow(propertyId) {
+    const eventsCount = Math.floor(Math.random() * 1000);
+    return {
+      status: eventsCount > 10,
+      events_last_24h: eventsCount,
+      message: `${eventsCount} events tracked in last 24h`
+    };
+  }
+
+  async checkEcommerceSetup(propertyId) {
+    return {
+      status: Math.random() > 0.3,
+      enhanced_ecommerce: Math.random() > 0.5,
+      purchase_events: Math.floor(Math.random() * 100)
+    };
+  }
+
+  async checkConversions(propertyId) {
+    const conversions = ['purchase', 'signup', 'contact'];
+    return {
+      status: true,
+      goals_configured: conversions.length,
+      conversion_rate: (Math.random() * 5 + 1).toFixed(2) + '%'
+    };
+  }
+
+  calculateScore(checks) {
+    const weights = {
+      property_exists: 30,
+      tracking_code: 25,
+      events_flowing: 20,
+      ecommerce_setup: 15,
+      conversion_tracking: 10
+    };
+
+    let totalScore = 0;
+    for (const [check, weight] of Object.entries(weights)) {
+      if (checks[check]?.status) {
+        totalScore += weight;
+      }
+    }
+    return totalScore;
+  }
+
+  generateRecommendations(checks) {
+    const recommendations = [];
+    
+    if (!checks.property_exists?.status) {
+      recommendations.push({
+        priority: 'HIGH',
+        action: 'Verify GA4 property setup and permissions',
+        impact: 'No data collection possible'
+      });
+    }
+    
+    if (!checks.tracking_code?.status) {
+      recommendations.push({
+        priority: 'HIGH', 
+        action: 'Install or fix GA4 tracking code',
+        impact: 'Missing crucial user behavior data'
+      });
+    }
+
+    if (!checks.events_flowing?.status) {
+      recommendations.push({
+        priority: 'MEDIUM',
+        action: 'Review event tracking implementation',
+        impact: 'Limited conversion optimization'
+      });
+    }
+
+    return recommendations;
+  }
+}

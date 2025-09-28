@@ -1,0 +1,179 @@
+import Fastify from 'fastify';
+import pkg from 'pg';
+const { Pool } = pkg;
+
+const fastify = Fastify({ logger: true });
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:supersecret@localhost:5433/growth_audit'
+});
+
+fastify.get('/health', async () => {
+  return {
+    service: 'analytics-service',
+    status: 'healthy',
+    timestamp: new Date().toISOString()
+  };
+});
+
+// Dashboard des métriques
+fastify.get('/dashboard', async () => {
+  try {
+    const clients = await pool.query('SELECT COUNT(*) as total FROM clients');
+    const audits = await pool.query('SELECT COUNT(*) as total FROM audits');
+    const activeClients = await pool.query('SELECT COUNT(*) as total FROM clients WHERE is_active = true');
+    
+    return {
+      metrics: {
+        total_clients: parseInt(clients.rows[0].total),
+        total_audits: parseInt(audits.rows[0].total),
+        active_clients: parseInt(activeClients.rows[0].total)
+      },
+      service: 'analytics-service',
+      timestamp: new Date().toISOString()
+    };
+  } catch (error) {
+    return { error: 'Analytics calculation failed', details: error.message };
+  }
+});
+
+const start = async () => {
+  try {
+    await fastify.listen({ port: 3003, host: '0.0.0.0' });
+    console.log('📊 Analytics Service running on port 3003');
+  } catch (err) {
+    fastify.log.error(err);
+    process.exit(1);
+  }
+};
+
+start();
+import { GA4Checker } from './integrations/ga4.js';
+import { MixpanelChecker } from './integrations/mixpanel.js';
+
+// Analytics Health Check endpoint
+fastify.post('/analytics/health-check', async (request) => {
+  const { client_id, platforms } = request.body;
+  
+  const results = {};
+  
+  // GA4 Check
+  if (platforms.ga4) {
+    const ga4Checker = new GA4Checker();
+    results.ga4 = await ga4Checker.healthCheck(platforms.ga4.property_id);
+  }
+  
+  // Mixpanel Check  
+  if (platforms.mixpanel) {
+    const mixpanelChecker = new MixpanelChecker(platforms.mixpanel.project_token);
+    results.mixpanel = await mixpanelChecker.healthCheck();
+  }
+  
+  // Calculate overall analytics score
+  const overallScore = Object.values(results).reduce((sum, result) => {
+    return sum + (result.overall_score || 0);
+  }, 0) / Object.keys(results).length;
+  
+  // Save to database
+  try {
+    await pool.query(
+      'INSERT INTO analytics_audits (client_id, platforms_data, overall_score, audit_date) VALUES ($1, $2, $3, NOW())',
+      [client_id, JSON.stringify(results), overallScore]
+    );
+  } catch (error) {
+    console.error('Failed to save analytics audit:', error);
+  }
+  
+  return {
+    client_id,
+    overall_score: Math.round(overallScore),
+    platforms: results,
+    summary: {
+      total_platforms: Object.keys(results).length,
+      healthy_platforms: Object.values(results).filter(r => r.overall_score > 70).length,
+      recommendations_count: Object.values(results).reduce((sum, r) => 
+        sum + (r.recommendations?.length || 0), 0)
+    }
+  };
+});
+
+import { FunnelAnalyzer } from './funnel/analyzer.js';
+
+// Funnel Analysis endpoint
+fastify.post('/funnel/analyze', async (request) => {
+  const { client_id, funnel_config } = request.body;
+  
+  const funnelAnalyzer = new FunnelAnalyzer(pool);
+  const analysis = await funnelAnalyzer.analyzeFunnel(client_id, funnel_config);
+  
+  // Sauvegarder l'analyse
+  try {
+    await pool.query(
+      'INSERT INTO funnel_analyses (client_id, funnel_data, overall_conversion, analyzed_at) VALUES ($1, $2, $3, NOW())',
+      [client_id, JSON.stringify(analysis), analysis.overall_conversion]
+    );
+  } catch (error) {
+    console.error('Failed to save funnel analysis:', error);
+  }
+  
+  return analysis;
+});
+
+// Données en temps réel pour un funnel
+fastify.get('/funnel/:funnelId/realtime', async (request) => {
+  const { funnelId } = request.params;
+  
+  // Simulation données temps réel
+  const realtimeData = {
+    funnel_id: funnelId,
+    current_visitors: Math.floor(Math.random() * 100) + 10,
+    conversions_last_hour: Math.floor(Math.random() * 20),
+    live_conversion_rate: (Math.random() * 5 + 2).toFixed(2) + '%',
+    active_sessions_by_step: {
+      'landing_page': Math.floor(Math.random() * 50) + 10,
+      'product_page': Math.floor(Math.random() * 30) + 5,
+      'checkout': Math.floor(Math.random() * 15) + 2,
+      'confirmation': Math.floor(Math.random() * 8) + 1
+    },
+    last_updated: new Date().toISOString()
+  };
+  
+  return realtimeData;
+});
+
+import { GA4Checker } from './integrations/ga4.js';
+
+// Test endpoint pour analytics audit
+fastify.post('/analytics/health-check', async (request) => {
+  const { client_id, platforms } = request.body;
+  
+  const results = {};
+  
+  // Test GA4 si configuré
+  if (platforms.ga4) {
+    const ga4Checker = new GA4Checker();
+    results.ga4 = await ga4Checker.healthCheck(platforms.ga4.property_id);
+  }
+  
+  // Calculer score global
+  const overallScore = Object.values(results).reduce((sum, result) => {
+    return sum + (result.overall_score || 0);
+  }, 0) / Object.keys(results).length;
+  
+  // Sauvegarder en base
+  try {
+    await pool.query(
+      'INSERT INTO analytics_audits (client_id, platforms_data, overall_score) VALUES ($1, $2, $3)',
+      [client_id, JSON.stringify(results), Math.round(overallScore)]
+    );
+  } catch (error) {
+    console.error('Failed to save analytics audit:', error);
+  }
+  
+  return {
+    client_id,
+    overall_score: Math.round(overallScore),
+    platforms: results,
+    status: 'completed'
+  };
+});

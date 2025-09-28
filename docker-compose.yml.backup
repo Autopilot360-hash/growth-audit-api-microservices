@@ -1,0 +1,98 @@
+services:
+  # API Gateway (Point d'entrée unique)
+  api-gateway:
+    build:
+      context: .
+      dockerfile: services/api-gateway/Dockerfile
+    container_name: growth-audit-gateway
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - CLIENT_SERVICE_URL=http://client-service:3001
+      - AUDIT_SERVICE_URL=http://audit-service:3002
+      - ANALYTICS_SERVICE_URL=http://analytics-service:3003
+      - AI_SERVICE_URL=http://ai-service:3004
+    depends_on:
+      - client-service
+    networks:
+      - growth-network
+
+  # Client Microservice
+  client-service:
+    build:
+      context: .
+      dockerfile: services/client-service/Dockerfile
+    container_name: growth-audit-client-service
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://postgres:supersecret@postgres:5432/growth_audit
+      - PORT=3001
+    depends_on:
+      - postgres
+    networks:
+      - growth-network
+
+  # Infrastructure services
+  postgres:
+    image: postgres:16-alpine
+    container_name: growth-audit-postgres
+    environment:
+      POSTGRES_DB: growth_audit
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: supersecret
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - growth-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: growth-audit-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - growth-network
+
+volumes:
+  postgres_data:
+
+networks:
+  growth-network:
+    driver: bridge
+
+  # Audit Microservice
+  audit-service:
+    build:
+      context: .
+      dockerfile: services/audit-service/Dockerfile
+    container_name: growth-audit-audit-service
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://postgres:supersecret@postgres:5432/growth_audit
+    depends_on:
+      - postgres
+    networks:
+      - growth-network
+
+  # Analytics Microservice
+  analytics-service:
+    build:
+      context: .
+      dockerfile: services/analytics-service/Dockerfile
+    container_name: growth-audit-analytics-service
+    ports:
+      - "3003:3003"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://postgres:supersecret@postgres:5432/growth_audit
+    depends_on:
+      - postgres
+    networks:
+      - growth-network
